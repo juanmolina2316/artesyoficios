@@ -15,8 +15,9 @@
   --body-size: 16px;
   --button-size: 14px;
   --bg-image: none;
+  --bg-pos-x: 50%;
+  --bg-pos-y: 0%;
   --bg-scale: 100%;
-  --hearts-opacity: 0.5;
 }
 
 * {
@@ -34,8 +35,8 @@ body {
   background-size: var(--bg-scale), auto;
   background-repeat: no-repeat, no-repeat;
   background-position: var(--bg-pos-x) var(--bg-pos-y), center;
+  overflow-x: hidden;
 }
-
 
 .app {
   padding-bottom: 90px;
@@ -43,66 +44,6 @@ body {
   z-index: 1;
 }
 
-.ornaments {
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 0;
-}
-
-.frame {
-  position: fixed;
-  inset: 0;
-}
-
-.frame path {
-  stroke: var(--accent);
-  stroke-width: 3;
-  fill: none;
-  opacity: 0.6;
-}
-
-.angels {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 150px;
-}
-
-.angels circle {
-  fill: var(--accent);
-  opacity: 0.2;
-}
-
-.heart {
-  position: fixed;
-  width: 12px;
-  height: 12px;
-  background: var(--accent);
-  transform: rotate(45deg);
-  animation: float 12s linear infinite;
-  opacity: var(--hearts-opacity);
-  bottom: -20px;
-}
-
-.heart::before,
-.heart::after {
-  content: "";
-  position: absolute;
-  width: 12px;
-  height: 12px;
-  background: var(--accent);
-  border-radius: 50%;
-}
-
-.heart::before { top: -6px; left: 0; }
-.heart::after { left: -6px; top: 0; }
-
-@keyframes float {
-  from { transform: translateY(120vh) rotate(45deg); }
-  to { transform: translateY(-20vh) rotate(45deg); }
-}
 
 .top-bar {
   position: sticky;
@@ -138,23 +79,77 @@ body {
 
 .hero {
   position: relative;
-  padding: 24px 20px 10px;
+  padding: 24px 20px 30px;
 }
 
-.hero img {
+.hero-media {
+  position: relative;
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: var(--shadow);
+  z-index: 0;
+}
+
+.hero-media img {
   width: 100%;
   height: 52vh;
   object-fit: cover;
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
+  display: block;
 }
 
+.hero-media--empty {
+  min-height: 52vh;
+  background: transparent;
+  box-shadow: none;
+}
+
+
 .hero-content {
-  margin-top: -90px;
-  background: var(--card);
+  margin-top: -70px;
   padding: 20px;
   border-radius: var(--radius);
-  box-shadow: var(--shadow);
+  position: relative;
+  z-index: 2;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.section-head {
+  position: relative;
+  z-index: 2;
+}
+
+.section-head {
+  background: rgba(246, 241, 238, 0.85);
+  padding: 32px;
+  border-radius: 30px;
+  max-width: 650px;
+  margin: 30px 20px 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.section-head h2,
+.section-head p {
+  display: block;
+}
+
+.empty {
+  background: rgba(246, 241, 238, 0.85);
+  padding: 24px;
+  border-radius: 24px;
+  max-width: 650px;
+  margin: 0 20px 20px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.hero-content.overlay {
+  position: relative;
+  z-index: 2;
 }
 
 .hero-content h1 {
@@ -284,6 +279,28 @@ body {
   gap: 10px;
 }
 
+.session-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.session-chip {
+  background: rgba(246, 241, 238, 0.85);
+  border: 2px solid rgba(0, 0, 0, 0.12);
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.06);
+}
+
+.session-chip.active {
+  background: rgba(80, 140, 255, 0.18);
+  color: var(--ink);
+  border-color: rgba(80, 140, 255, 0.5);
+  box-shadow: 0 10px 20px rgba(80, 140, 255, 0.2);
+}
+
 .filters {
   display: flex;
   gap: 8px;
@@ -344,26 +361,6 @@ body {
   padding: 0 20px;
 }
 
-.booking-info {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-  background: var(--card);
-  padding: 12px;
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-  font-size: 13px;
-}
-
-.booking-info div {
-  display: grid;
-  gap: 4px;
-}
-
-.booking-info span {
-  color: var(--muted);
-}
-
 .booking-form label {
   display: grid;
   gap: 6px;
@@ -385,6 +382,26 @@ textarea {
   min-height: 90px;
 }
 
+.booking-info {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  background: var(--card);
+  padding: 12px;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  font-size: 13px;
+}
+
+.booking-info div {
+  display: grid;
+  gap: 4px;
+}
+
+.booking-info span {
+  color: var(--muted);
+}
+
 .payments {
   margin: 20px;
   background: var(--card);
@@ -395,7 +412,7 @@ textarea {
 
 .pay-buttons {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, 1fr);
   gap: 12px;
   margin-top: 10px;
 }
@@ -409,6 +426,21 @@ textarea {
   display: grid;
   gap: 14px;
   padding: 0 20px 20px;
+}
+
+.about-photos {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  padding: 0 20px 20px;
+}
+
+.about-photos img {
+  width: 100%;
+  height: 180px;
+  object-fit: cover;
+  border-radius: 18px;
+  box-shadow: var(--shadow);
 }
 
 .about-card {
@@ -451,34 +483,8 @@ textarea {
   padding-bottom: 20px;
 }
 
-.contact-card {
-  margin: 0 20px;
-  background: var(--card);
-  padding: 18px;
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-  display: grid;
-  gap: 12px;
-}
-
-.cancel {
-  padding-bottom: 20px;
-}
-
-.cancel-card {
-  margin: 0 20px;
-  background: var(--card);
-  padding: 18px;
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-  display: grid;
-  gap: 12px;
-}
-
-.enterprise {
-  padding-bottom: 20px;
-}
-
+.contact-card,
+.cancel-card,
 .enterprise-card {
   margin: 0 20px;
   background: var(--card);
@@ -489,6 +495,11 @@ textarea {
   gap: 12px;
 }
 
+.cancel,
+.enterprise {
+  padding-bottom: 20px;
+}
+
 .bottom-nav {
   position: fixed;
   bottom: 10px;
@@ -497,7 +508,7 @@ textarea {
   background: #1a1a1a;
   border-radius: 20px;
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: repeat(8, 1fr);
   gap: 4px;
   padding: 10px;
   z-index: 20;
@@ -675,13 +686,13 @@ textarea {
     grid-template-columns: repeat(2, 1fr);
   }
 
-  .hero img {
+  .hero-media img {
     height: 60vh;
   }
 
   .bottom-nav {
     left: 50%;
     transform: translateX(-50%);
-    max-width: 560px;
+    max-width: 760px;
   }
 }

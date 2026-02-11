@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 
-const API = "http://localhost:4000/api";
-const IMG_BASE = "http://localhost:4000";
+const HOST = window.location.hostname || "localhost";
+const API = `${window.location.protocol}//${HOST}:4000/api`;
+const IMG_BASE = `${window.location.protocol}//${HOST}:4000`;
 
 const currency = new Intl.NumberFormat("es-MX", {
   style: "currency",
@@ -16,12 +17,14 @@ const defaultHero = {
   image: "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?q=80&w=1400&auto=format&fit=crop",
   imagePosX: "50%",
   imagePosY: "50%",
-  imageScale: 1
+  imageScale: 1,
+  showBanner: true
 };
 
 const defaultAbout = {
   title: "Somos Artes y Oficios",
-  text: "Una comunidad de talleres donde la creatividad se vuelve oficio. Diseñamos experiencias presenciales con materiales premium, guías expertas y un ritmo cercano."
+  text: "Una comunidad de talleres donde la creatividad se vuelve oficio. Diseñamos experiencias presenciales con materiales premium, guías expertas y un ritmo cercano.",
+  images: []
 };
 
 const defaultContact = {
@@ -41,21 +44,16 @@ const defaultTheme = {
   card: "#ffffff",
   radius: "22px",
   shadow: "0 12px 30px rgba(17, 16, 15, 0.12)",
-  headingFont: "\"Playfair Display\", serif",
-  bodyFont: "\"Manrope\", sans-serif",
+  headingFont: '"Playfair Display", serif',
+  bodyFont: '"Manrope", sans-serif',
   h1Size: "30px",
   h2Size: "26px",
   bodySize: "16px",
   buttonSize: "14px",
-  bgImage: "http://localhost:4000/uploads/banner-theme.png",
+  bgImage: "/uploads/banner-theme.png",
   bgPosX: "50%",
   bgPosY: "0%",
-  bgScale: "100%",
-  showFrame: true,
-  showAngels: true,
-  showHearts: true,
-  heartsOpacity: "0.5",
-  heartsCount: 6
+  bgScale: "100%"
 };
 
 const navItems = [
@@ -73,9 +71,27 @@ const fetchJSON = async (url, options) => {
   const res = await fetch(url, options);
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.error || "Error" );
+    throw new Error(body.error || "Error");
   }
   return res.json();
+};
+
+const resolveUrl = (value) => {
+  if (!value) return "";
+  if (value.startsWith("http://") || value.startsWith("https://")) return value;
+  if (value.startsWith("/")) return `${IMG_BASE}${value}`;
+  return value;
+};
+
+const normalizeUpload = (value) => {
+  if (!value) return "";
+  try {
+    const url = new URL(value);
+    if (url.pathname.startsWith("/uploads/")) return url.pathname;
+  } catch {
+    if (value.startsWith("/uploads/")) return value;
+  }
+  return value;
 };
 
 const buildMapSrc = (mapEmbed, location) => {
@@ -92,7 +108,7 @@ const buildMapSrc = (mapEmbed, location) => {
         }
       }
     } catch {
-      // fall through to location-based embed
+      // fall through
     }
   }
   if (location) {
@@ -101,20 +117,47 @@ const buildMapSrc = (mapEmbed, location) => {
   return "";
 };
 
+const getCache = (key, fallback) => {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return fallback;
+    const data = JSON.parse(raw);
+    if (typeof fallback === "object" && fallback !== null && !Array.isArray(fallback)) {
+      return { ...fallback, ...data };
+    }
+    return data;
+  } catch {
+    return fallback;
+  }
+};
+
+const setCache = (key, value) => {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // ignore
+  }
+};
+
 const ImageUploader = ({ value = [], onChange }) => {
   const [uploading, setUploading] = useState(false);
   const handleFiles = async (files) => {
     if (!files?.length) return;
     setUploading(true);
     const newUrls = [];
-    for (const file of files) {
-      const form = new FormData();
-      form.append("file", file);
-      const res = await fetchJSON(`${API}/upload`, { method: "POST", body: form });
-      newUrls.push(`${IMG_BASE}${res.url}`);
+    try {
+      for (const file of files) {
+        const form = new FormData();
+        form.append("file", file);
+        const res = await fetchJSON(`${API}/upload`, { method: "POST", body: form });
+        newUrls.push(res.url);
+      }
+      onChange([...(value || []), ...newUrls]);
+    } catch {
+      alert("No se pudo subir la imagen. Verifica que el backend esté activo.");
+    } finally {
+      setUploading(false);
     }
-    onChange([...(value || []), ...newUrls]);
-    setUploading(false);
   };
 
   return (
@@ -134,7 +177,7 @@ const ImageUploader = ({ value = [], onChange }) => {
       <div className="uploader-grid">
         {(value || []).map((url) => (
           <div className="thumb" key={url}>
-            <img src={url} alt="" />
+            <img src={resolveUrl(url)} alt="" />
             <button type="button" onClick={() => onChange(value.filter((u) => u !== url))}>Quitar</button>
           </div>
         ))}
@@ -148,11 +191,16 @@ const SingleImageUploader = ({ value, onChange }) => {
   const handleFile = async (file) => {
     if (!file) return;
     setUploading(true);
-    const form = new FormData();
-    form.append("file", file);
-    const res = await fetchJSON(`${API}/upload`, { method: "POST", body: form });
-    onChange(`${IMG_BASE}${res.url}`);
-    setUploading(false);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetchJSON(`${API}/upload`, { method: "POST", body: form });
+      onChange(res.url);
+    } catch {
+      alert("No se pudo subir la imagen. Verifica que el backend esté activo.");
+    } finally {
+      setUploading(false);
+    }
   };
 
   return (
@@ -164,13 +212,13 @@ const SingleImageUploader = ({ value, onChange }) => {
           onChange={(e) => handleFile(e.target.files?.[0])}
         />
         <div>
-          <strong>{uploading ? "Subiendo..." : "Toca para subir banner"}</strong>
+          <strong>{uploading ? "Subiendo..." : "Toca para subir"}</strong>
           <span>Recomendado 1600x900</span>
         </div>
       </label>
       {value && (
         <div className="thumb">
-          <img src={value} alt="" />
+          <img src={resolveUrl(value)} alt="" />
           <button type="button" onClick={() => onChange("")}>Quitar</button>
         </div>
       )}
@@ -183,21 +231,22 @@ const LogoUploader = ({ value, onChange }) => {
   const handleFile = async (file) => {
     if (!file) return;
     setUploading(true);
-    const form = new FormData();
-    form.append("file", file);
-    const res = await fetchJSON(`${API}/upload`, { method: "POST", body: form });
-    onChange(`${IMG_BASE}${res.url}`);
-    setUploading(false);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetchJSON(`${API}/upload`, { method: "POST", body: form });
+      onChange(res.url);
+    } catch {
+      alert("No se pudo subir la imagen. Verifica que el backend esté activo.");
+    } finally {
+      setUploading(false);
+    }
   };
 
   return (
     <div className="uploader">
       <label className="uploader-drop">
-        <input
-          type="file"
-          accept="image/*"
-          onChange={(e) => handleFile(e.target.files?.[0])}
-        />
+        <input type="file" accept="image/*" onChange={(e) => handleFile(e.target.files?.[0])} />
         <div>
           <strong>{uploading ? "Subiendo..." : "Subir logo"}</strong>
           <span>PNG o SVG</span>
@@ -205,7 +254,7 @@ const LogoUploader = ({ value, onChange }) => {
       </label>
       {value && (
         <div className="thumb">
-          <img src={value} alt="" />
+          <img src={resolveUrl(value)} alt="" />
           <button type="button" onClick={() => onChange("")}>Quitar</button>
         </div>
       )}
@@ -226,19 +275,55 @@ const App = () => {
   const [categories, setCategories] = useState([]);
   const [brands, setBrands] = useState([]);
   const [reservations, setReservations] = useState([]);
-  const [hero, setHero] = useState(defaultHero);
-  const [about, setAbout] = useState(defaultAbout);
-  const [contact, setContact] = useState(defaultContact);
-  const [theme, setTheme] = useState(defaultTheme);
+  const [hero, setHero] = useState(() => getCache("ao_hero", defaultHero));
+  const [about, setAbout] = useState(() => getCache("ao_about", defaultAbout));
+  const [contact, setContact] = useState(() => getCache("ao_contact", defaultContact));
+  const [theme, setTheme] = useState(() => getCache("ao_theme", defaultTheme));
   const [activeCategory, setActiveCategory] = useState("all");
   const [selectedWorkshop, setSelectedWorkshop] = useState("");
+  const [selectedSession, setSelectedSession] = useState("");
+  const [highlightedSession, setHighlightedSession] = useState("");
   const [bookingDate, setBookingDate] = useState("");
   const [adminOpen, setAdminOpen] = useState(false);
   const [adminAuthed, setAdminAuthed] = useState(false);
   const [adminPin, setAdminPin] = useState("");
-  const [adminPinStored, setAdminPinStored] = useState("");
+  const [adminPinStored, setAdminPinStored] = useState(() => getCache("ao_pin", ""));
   const [adminPinNew, setAdminPinNew] = useState("");
+
   const masterPin = "100202";
+  const defaultPin = "290798";
+
+  const [adminReservation, setAdminReservation] = useState({
+    workshop_id: "",
+    session_id: "",
+    name: "",
+    email: "",
+    seats: "",
+    reservation_date: "",
+    status: "paid"
+  });
+
+  const [newCategory, setNewCategory] = useState("");
+  const [newBrand, setNewBrand] = useState({ name: "", logo_url: "" });
+  const [workshopForm, setWorkshopForm] = useState({
+    id: "",
+    title: "",
+    description: "",
+    price: "",
+    location: "",
+    category_id: "",
+    images: [],
+    map_embed: "",
+    featured: false
+  });
+  const [sessionForm, setSessionForm] = useState({
+    workshop_id: "",
+    date: "",
+    time: "",
+    location: "",
+    seats: ""
+  });
+
   const [companyForm, setCompanyForm] = useState({
     company: "",
     contact: "",
@@ -249,28 +334,21 @@ const App = () => {
     message: ""
   });
 
-  const [newCategory, setNewCategory] = useState("");
-  const [newBrand, setNewBrand] = useState({ name: "", logo_url: "" });
-  const [workshopForm, setWorkshopForm] = useState({
-    id: "",
-    title: "",
-    description: "",
-    price: "",
-    date: "",
-    location: "",
-    seats: "",
-    category_id: "",
-    images: [],
-    map_embed: "",
-    featured: false
-  });
-
   const filteredWorkshops = useMemo(() => {
     if (activeCategory === "all") return workshops;
     return workshops.filter((w) => w.category_id === activeCategory);
   }, [workshops, activeCategory]);
 
   const featured = workshops.filter((w) => w.featured).slice(0, 4);
+
+  const selectedWorkshopObj = useMemo(
+    () => workshops.find((w) => w.id === selectedWorkshop),
+    [workshops, selectedWorkshop]
+  );
+  const selectedSessionObj = useMemo(
+    () => selectedWorkshopObj?.sessions?.find((s) => s.id === selectedSession),
+    [selectedWorkshopObj, selectedSession]
+  );
 
   const loadAll = async () => {
     const [w, c, b, r] = await Promise.all([
@@ -279,42 +357,82 @@ const App = () => {
       fetchJSON(`${API}/brands`),
       fetchJSON(`${API}/reservations`)
     ]);
-    setWorkshops(w);
+    setWorkshops(w.map((item) => ({
+      ...item,
+      images: (item.images || []).map((img) => normalizeUpload(img))
+    })));
     setCategories(c);
-    setBrands(b);
+    setBrands(b.map((item) => ({ ...item, logo_url: normalizeUpload(item.logo_url) })));
     setReservations(r);
   };
 
   const loadSettings = async () => {
-    const heroRes = await fetchJSON(`${API}/settings/hero`).catch(() => ({ value: "" }));
-    const aboutRes = await fetchJSON(`${API}/settings/about`).catch(() => ({ value: "" }));
-    const pinRes = await fetchJSON(`${API}/settings/admin_pin`).catch(() => ({ value: "" }));
-    const themeRes = await fetchJSON(`${API}/settings/theme`).catch(() => ({ value: "" }));
-    const contactRes = await fetchJSON(`${API}/settings/contact`).catch(() => ({ value: "" }));
-    if (heroRes.value) setHero(JSON.parse(heroRes.value));
-    if (aboutRes.value) setAbout(JSON.parse(aboutRes.value));
-    if (pinRes.value) {
-      setAdminPinStored(pinRes.value);
-      setAdminPinNew(pinRes.value);
+    try {
+      const heroRes = await fetchJSON(`${API}/settings/hero`).catch(() => ({ value: "" }));
+      const aboutRes = await fetchJSON(`${API}/settings/about`).catch(() => ({ value: "" }));
+      const pinRes = await fetchJSON(`${API}/settings/admin_pin`).catch(() => ({ value: "" }));
+      const themeRes = await fetchJSON(`${API}/settings/theme`).catch(() => ({ value: "" }));
+      const contactRes = await fetchJSON(`${API}/settings/contact`).catch(() => ({ value: "" }));
+
+      if (heroRes.value) {
+        const v = JSON.parse(heroRes.value);
+        if (v.image) v.image = normalizeUpload(v.image);
+        setHero(v);
+        setCache("ao_hero", v);
+      }
+      if (aboutRes.value) {
+        const v = JSON.parse(aboutRes.value);
+        setAbout(v);
+        setCache("ao_about", v);
+      }
+      if (themeRes.value) {
+        const v = { ...defaultTheme, ...JSON.parse(themeRes.value) };
+        if (v.bgImage) v.bgImage = normalizeUpload(v.bgImage);
+        setTheme(v);
+        setCache("ao_theme", v);
+      }
+      if (contactRes.value) {
+        const v = { ...defaultContact, ...JSON.parse(contactRes.value) };
+        setContact(v);
+        setCache("ao_contact", v);
+      }
+      if (pinRes.value) {
+        setAdminPinStored(pinRes.value);
+        setAdminPinNew(pinRes.value);
+        setCache("ao_pin", pinRes.value);
+      } else if (!adminPinStored) {
+        setAdminPinStored(defaultPin);
+        setAdminPinNew(defaultPin);
+        setCache("ao_pin", defaultPin);
+        await fetchJSON(`${API}/settings/admin_pin`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ value: defaultPin })
+        }).catch(() => null);
+      }
+    } catch {
+      if (!adminPinStored) {
+        setAdminPinStored(defaultPin);
+        setAdminPinNew(defaultPin);
+        setCache("ao_pin", defaultPin);
+      }
     }
-    if (themeRes.value) setTheme({ ...defaultTheme, ...JSON.parse(themeRes.value) });
-    if (contactRes.value) setContact({ ...defaultContact, ...JSON.parse(contactRes.value) });
   };
 
   useEffect(() => {
-    loadAll();
+    loadAll().catch(() => null);
     loadSettings();
   }, []);
 
-  const selectedWorkshopObj = useMemo(
-    () => workshops.find((w) => w.id === selectedWorkshop),
-    [workshops, selectedWorkshop]
-  );
-
   useEffect(() => {
-    if (selectedWorkshopObj?.date) {
-      setBookingDate(selectedWorkshopObj.date);
+    if (selectedWorkshopObj?.sessions?.length) {
+      const first = selectedWorkshopObj.sessions[0];
+      setSelectedSession(first.id);
+      setHighlightedSession(first.id);
+      setBookingDate(first.date);
     } else {
+      setSelectedSession("");
+      setHighlightedSession("");
       setBookingDate("");
     }
   }, [selectedWorkshopObj]);
@@ -336,11 +454,10 @@ const App = () => {
     root.style.setProperty("--h2-size", theme.h2Size);
     root.style.setProperty("--body-size", theme.bodySize);
     root.style.setProperty("--button-size", theme.buttonSize);
-    root.style.setProperty("--bg-image", theme.bgImage ? `url("${theme.bgImage}")` : "none");
+    root.style.setProperty("--bg-image", theme.bgImage ? `url(\"${resolveUrl(theme.bgImage)}\")` : "none");
     root.style.setProperty("--bg-pos-x", theme.bgPosX);
     root.style.setProperty("--bg-pos-y", theme.bgPosY);
     root.style.setProperty("--bg-scale", theme.bgScale);
-    root.style.setProperty("--hearts-opacity", theme.heartsOpacity);
   }, [theme]);
 
   const saveWorkshop = async () => {
@@ -363,9 +480,7 @@ const App = () => {
       title: "",
       description: "",
       price: "",
-      date: "",
       location: "",
-      seats: "",
       category_id: "",
       images: [],
       map_embed: "",
@@ -377,20 +492,26 @@ const App = () => {
   const handleReserve = async (e) => {
     e.preventDefault();
     const form = new FormData(e.currentTarget);
+    if (!selectedSession) {
+      alert("Selecciona una fecha disponible.");
+      return;
+    }
     await fetchJSON(`${API}/reservations`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         workshop_id: form.get("workshop"),
+        session_id: selectedSession,
         name: form.get("name"),
         email: form.get("email"),
         seats: Number(form.get("seats")),
-        reservation_date: form.get("date")
+        reservation_date: bookingDate,
+        status: "pending_payment"
       })
     });
     e.currentTarget.reset();
     await loadAll();
-    alert("Reserva registrada. Te contactaremos para confirmar el pago.");
+    alert("Solicitud registrada. La reserva se confirma solo después del pago.");
   };
 
   const adminLogin = () => {
@@ -398,11 +519,8 @@ const App = () => {
       setAdminAuthed(true);
       return;
     }
-    if (!adminPinStored) {
-      alert("Primero configura un PIN en el panel.");
-      return;
-    }
-    if (adminPin === adminPinStored) {
+    const effectivePin = adminPinStored || defaultPin;
+    if (adminPin === effectivePin) {
       setAdminAuthed(true);
     } else {
       alert("PIN incorrecto");
@@ -420,16 +538,9 @@ const App = () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ value: JSON.stringify(about) })
     });
+    setCache("ao_hero", hero);
+    setCache("ao_about", about);
     alert("Textos actualizados");
-  };
-
-  const saveContact = async () => {
-    await fetchJSON(`${API}/settings/contact`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ value: JSON.stringify(contact) })
-    });
-    alert("Contacto actualizado");
   };
 
   const saveTheme = async () => {
@@ -438,6 +549,7 @@ const App = () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ value: JSON.stringify(theme) })
     });
+    setCache("ao_theme", theme);
     alert("Diseño actualizado");
   };
 
@@ -453,40 +565,22 @@ const App = () => {
     });
     setAdminPinStored(adminPinNew);
     setAdminPin("");
+    setCache("ao_pin", adminPinNew);
     alert("PIN actualizado");
+  };
+
+  const saveContact = async () => {
+    await fetchJSON(`${API}/settings/contact`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ value: JSON.stringify(contact) })
+    });
+    setCache("ao_contact", contact);
+    alert("Contacto actualizado");
   };
 
   return (
     <div className="app">
-      <div className="ornaments">
-        {theme.showFrame && (
-          <svg className="frame" viewBox="0 0 390 1200" preserveAspectRatio="none">
-            <path
-              d="M20 40 Q10 80 20 120 T20 200 T20 300 T20 400 T20 500 T20 600 T20 700 T20 800 T20 900 T20 1000 T20 1100
-                 M370 40 Q380 80 370 120 T370 200 T370 300 T370 400 T370 500 T370 600 T370 700 T370 800 T370 900 T370 1000 T370 1100"
-            />
-          </svg>
-        )}
-        {theme.showAngels && (
-          <svg className="angels" viewBox="0 0 390 150" preserveAspectRatio="none">
-            <circle cx="195" cy="60" r="35" />
-          </svg>
-        )}
-        {theme.showHearts && (
-          <>
-            {Array.from({ length: theme.heartsCount }).map((_, i) => (
-              <span
-                key={`heart-${i}`}
-                className="heart"
-                style={{
-                  left: `${10 + i * (80 / Math.max(1, theme.heartsCount - 1))}%`,
-                  animationDelay: `${(i * 2) % 6}s`
-                }}
-              />
-            ))}
-          </>
-        )}
-      </div>
       <header className="top-bar">
         <div className="logo">
           <span>Artes</span>
@@ -496,16 +590,20 @@ const App = () => {
       </header>
 
       <section id="inicio" className="hero">
-        <img
-          src={hero.image}
-          alt=""
-          style={{
-            objectPosition: `${hero.imagePosX} ${hero.imagePosY}`,
-            transform: `scale(${hero.imageScale})`
-          }}
-        />
-        <div className="hero-content">
-          <p className="eyebrow">Instagram: @artes_oficios_</p>
+        <div className={`hero-media ${hero.showBanner ? "" : "hero-media--empty"}`}>
+          {hero.showBanner && (
+            <img
+              src={resolveUrl(hero.image)}
+              alt=""
+              style={{
+                objectPosition: `${hero.imagePosX} ${hero.imagePosY}`,
+                transform: `scale(${hero.imageScale})`
+              }}
+            />
+          )}
+        </div>
+        <div className="hero-content overlay">
+          <p className="eyebrow">Instagram: {contact.instagram}</p>
           <h1>{hero.title}</h1>
           <p>{hero.subtitle}</p>
           <a className="primary" href="#agendar">{hero.cta}</a>
@@ -521,14 +619,16 @@ const App = () => {
           {featured.map((w) => (
             <article className="work-card" key={w.id}>
               <div className="work-image">
-                <img src={w.images?.[0] || hero.image} alt="" />
+                <img src={resolveUrl(w.images?.[0] || hero.image)} alt="" />
               </div>
               <div className="work-body">
                 <h3>{w.title}</h3>
                 <p>{w.description}</p>
                 <div className="meta">
                   <span>{currency.format(w.price)}</span>
-                  <span>{w.date}</span>
+                  {!w.sessions?.length && (
+                    <span>{w.date}</span>
+                  )}
                 </div>
                 <a className="secondary" href="#agendar" onClick={() => setSelectedWorkshop(w.id)}>Reservar</a>
               </div>
@@ -555,7 +655,7 @@ const App = () => {
           {filteredWorkshops.map((w) => (
             <article className="work-card large" key={w.id}>
               <div className="work-image">
-                <img src={w.images?.[0] || hero.image} alt="" />
+                <img src={resolveUrl(w.images?.[0] || hero.image)} alt="" />
               </div>
               <div className="work-body">
                 <div className="work-header">
@@ -565,19 +665,43 @@ const App = () => {
                 <p>{w.description}</p>
                 <div className="meta-grid">
                   <span>{currency.format(w.price)}</span>
-                  <span>{w.date}</span>
+                  {!w.sessions?.length && (
+                    <span>{w.date}</span>
+                  )}
                   <span>{w.location}</span>
-                  <span>{w.seats} cupos</span>
+                  {!w.sessions?.length && (
+                    <span>{w.seats} cupos</span>
+                  )}
                 </div>
+                {w.sessions?.length > 0 && (
+                  <div className="session-list">
+                    {w.sessions.map((s) => (
+                      <button
+                        key={s.id}
+                        type="button"
+                        className={`session-chip ${highlightedSession === s.id ? "active" : ""}`}
+                        onClick={() => {
+                          setSelectedWorkshop(w.id);
+                          setSelectedSession(s.id);
+                          setHighlightedSession(s.id);
+                          setBookingDate(s.date);
+                          window.location.hash = "agendar";
+                        }}
+                      >
+                        {s.date}{s.time ? ` · ${s.time}` : ""}
+                      </button>
+                    ))}
+                  </div>
+                )}
                 <div className="card-actions">
                   <a className="secondary" href="#agendar" onClick={() => setSelectedWorkshop(w.id)}>Reservar</a>
                 </div>
               </div>
               <div className="map-embed">
-                {buildMapSrc(w.map_embed, w.location) ? (
+                {buildMapSrc(w.map_embed, (w.sessions?.[0]?.location || w.location)) ? (
                   <iframe
                     title={`Mapa ${w.title}`}
-                    src={buildMapSrc(w.map_embed, w.location)}
+                    src={buildMapSrc(w.map_embed, (w.sessions?.[0]?.location || w.location))}
                     loading="lazy"
                     referrerPolicy="no-referrer-when-downgrade"
                   />
@@ -609,25 +733,35 @@ const App = () => {
             </select>
           </label>
           <label>
-            Fecha
-            <input
-              type="date"
+            Fecha (sesión)
+            <select
               name="date"
               required
-              value={bookingDate}
-              min={selectedWorkshopObj?.date || undefined}
-              max={selectedWorkshopObj?.date || undefined}
-              onChange={(e) => setBookingDate(e.target.value)}
-            />
+              value={selectedSession}
+              onChange={(e) => {
+                const sid = e.target.value;
+                setSelectedSession(sid);
+                const s = selectedWorkshopObj?.sessions?.find((x) => x.id === sid);
+                setBookingDate(s?.date || "");
+              }}
+            >
+              <option value="">Selecciona una fecha</option>
+              {(selectedWorkshopObj?.sessions || []).map((s) => (
+                <option key={s.id} value={s.id}>{s.date} · {s.time || "10:00"}</option>
+              ))}
+            </select>
           </label>
           <div className="booking-info">
             <div>
               <strong>Ubicación</strong>
-              <span>{selectedWorkshopObj?.location || "Selecciona un taller"}</span>
+              <span>{selectedSessionObj?.location || selectedWorkshopObj?.location || "Selecciona un taller"}</span>
             </div>
             <div>
               <strong>Cupos</strong>
-              <span>{selectedWorkshopObj?.seats ? `${selectedWorkshopObj.seats} lugares` : "—"}</span>
+              <span>
+                {selectedSessionObj?.seats ? `${selectedSessionObj.seats} lugares` : "—"}
+                {selectedSessionObj?.time ? ` · ${selectedSessionObj.time}` : ""}
+              </span>
             </div>
           </div>
           <label>
@@ -646,10 +780,11 @@ const App = () => {
         </form>
         <div className="payments">
           <h3>Pago seguro</h3>
-          <p>Stripe y PayPal listos para México. Conecta tus llaves en el backend para activar pagos reales.</p>
+          <p>Stripe, PayPal y Apple Pay listos para México. Conecta tus llaves en el backend para activar pagos reales.</p>
           <div className="pay-buttons">
             <button type="button" className="pay">Pagar con Stripe</button>
             <button type="button" className="pay alt">Pagar con PayPal</button>
+            <button type="button" className="pay">Apple Pay</button>
           </div>
         </div>
       </section>
@@ -762,6 +897,13 @@ const App = () => {
           <h2>{about.title}</h2>
           <p>{about.text}</p>
         </div>
+        {about.images?.length > 0 && (
+          <div className="about-photos">
+            {about.images.map((img) => (
+              <img key={img} src={resolveUrl(img)} alt="" />
+            ))}
+          </div>
+        )}
         <div className="about-grid">
           <div className="about-card">
             <h4>Experiencias premium</h4>
@@ -786,7 +928,7 @@ const App = () => {
         <div className="brand-carousel">
           {brands.map((b) => (
             <div className="brand" key={b.id}>
-              <img src={b.logo_url} alt={b.name} />
+              <img src={resolveUrl(b.logo_url)} alt={b.name} />
             </div>
           ))}
           {brands.length === 0 && (
@@ -827,19 +969,9 @@ const App = () => {
             {!adminAuthed ? (
               <div className="admin-login">
                 <h3>Panel Admin</h3>
-                {!adminPinStored ? (
-                  <>
-                    <p>Crea tu PIN de acceso.</p>
-                    <input type="password" value={adminPinNew} onChange={(e) => setAdminPinNew(e.target.value)} placeholder="Nuevo PIN" />
-                    <button className="primary" onClick={saveAdminPin}>Guardar PIN</button>
-                  </>
-                ) : (
-                  <>
-                    <p>Ingresa tu PIN.</p>
-                    <input type="password" value={adminPin} onChange={(e) => setAdminPin(e.target.value)} placeholder="PIN" />
-                    <button className="primary" onClick={adminLogin}>Entrar</button>
-                  </>
-                )}
+                <p>Ingresa tu PIN de administrador.</p>
+                <input type="password" value={adminPin} onChange={(e) => setAdminPin(e.target.value)} placeholder="PIN" />
+                <button className="primary" onClick={adminLogin}>Entrar</button>
               </div>
             ) : (
               <div className="admin-body">
@@ -849,9 +981,7 @@ const App = () => {
                   <div className="form-grid">
                     <input placeholder="Título" value={workshopForm.title} onChange={(e) => setWorkshopForm({ ...workshopForm, title: e.target.value })} />
                     <input placeholder="Precio" type="number" value={workshopForm.price} onChange={(e) => setWorkshopForm({ ...workshopForm, price: e.target.value })} />
-                    <input placeholder="Fecha (YYYY-MM-DD)" value={workshopForm.date} onChange={(e) => setWorkshopForm({ ...workshopForm, date: e.target.value })} />
                     <input placeholder="Ubicación" value={workshopForm.location} onChange={(e) => setWorkshopForm({ ...workshopForm, location: e.target.value })} />
-                    <input placeholder="Cupos" type="number" value={workshopForm.seats} onChange={(e) => setWorkshopForm({ ...workshopForm, seats: e.target.value })} />
                     <select value={workshopForm.category_id} onChange={(e) => setWorkshopForm({ ...workshopForm, category_id: e.target.value })}>
                       <option value="">Categoría</option>
                       {categories.map((c) => (
@@ -873,14 +1003,68 @@ const App = () => {
                       <div key={w.id} className="admin-item">
                         <div>
                           <strong>{w.title}</strong>
-                          <small>{w.date} · {currency.format(w.price)}</small>
+                          <small>{(w.sessions?.[0]?.date || w.date || "Sin fecha")} · {currency.format(w.price)}</small>
                         </div>
                         <div>
-                          <button onClick={() => setWorkshopForm({ ...w, images: w.images || [] })}>Editar</button>
+                          <button onClick={() => { setWorkshopForm({ ...w, images: w.images || [] }); setSessionForm({ ...sessionForm, workshop_id: w.id }); }}>Editar</button>
                           <button className="danger" onClick={async () => { await fetchJSON(`${API}/workshops/${w.id}`, { method: "DELETE" }); await loadAll(); }}>Eliminar</button>
                         </div>
                       </div>
                     ))}
+                  </div>
+
+                  <div className="admin-section">
+                    <h4>Sesiones</h4>
+                    <div className="form-grid">
+                      <select value={sessionForm.workshop_id} onChange={(e) => setSessionForm({ ...sessionForm, workshop_id: e.target.value })}>
+                        <option value="">Taller</option>
+                        {workshops.map((w) => (
+                          <option key={w.id} value={w.id}>{w.title}</option>
+                        ))}
+                      </select>
+                      <input type="date" value={sessionForm.date} onChange={(e) => setSessionForm({ ...sessionForm, date: e.target.value })} />
+                      <input type="time" value={sessionForm.time} onChange={(e) => setSessionForm({ ...sessionForm, time: e.target.value })} />
+                      <input type="text" placeholder="Lugar (sesión)" value={sessionForm.location} onChange={(e) => setSessionForm({ ...sessionForm, location: e.target.value })} />
+                      <input type="number" placeholder="Cupos" value={sessionForm.seats} onChange={(e) => setSessionForm({ ...sessionForm, seats: e.target.value })} />
+                      <button
+                        onClick={async () => {
+                          if (!sessionForm.workshop_id || !sessionForm.date || !sessionForm.seats) {
+                            alert("Completa taller, fecha y cupos.");
+                            return;
+                          }
+                          try {
+                            await fetchJSON(`${API}/sessions`, {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({
+                                workshop_id: sessionForm.workshop_id,
+                                date: sessionForm.date,
+                                time: sessionForm.time,
+                                location: sessionForm.location,
+                                seats: Number(sessionForm.seats)
+                              })
+                            });
+                            setSessionForm({ workshop_id: sessionForm.workshop_id, date: "", time: "", location: "", seats: "" });
+                            await loadAll();
+                          } catch (err) {
+                            alert(err?.message || "No se pudo guardar la sesión.");
+                          }
+                        }}
+                      >
+                        Agregar sesión
+                      </button>
+                    </div>
+                    <div className="admin-list">
+                      {(workshops.find((w) => w.id === sessionForm.workshop_id)?.sessions || []).map((s) => (
+                        <div key={s.id} className="admin-item">
+                          <div>
+                            <strong>{s.date} · {s.time || "10:00"}</strong>
+                            <small>{s.location || "Sin ubicación"} · {s.seats} cupos</small>
+                          </div>
+                          <button className="danger" onClick={async () => { await fetchJSON(`${API}/sessions/${s.id}`, { method: "DELETE" }); await loadAll(); }}>Eliminar</button>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </div>
 
@@ -925,14 +1109,77 @@ const App = () => {
 
                 <div className="admin-section">
                   <h4>Reservas</h4>
+                  <div className="form-grid">
+                    <select value={adminReservation.workshop_id} onChange={(e) => setAdminReservation({ ...adminReservation, workshop_id: e.target.value })}>
+                      <option value="">Taller</option>
+                      {workshops.map((w) => (
+                        <option key={w.id} value={w.id}>{w.title}</option>
+                      ))}
+                    </select>
+                    <select value={adminReservation.session_id} onChange={(e) => setAdminReservation({ ...adminReservation, session_id: e.target.value })}>
+                      <option value="">Sesión</option>
+                      {(workshops.find((w) => w.id === adminReservation.workshop_id)?.sessions || []).map((s) => (
+                        <option key={s.id} value={s.id}>{s.date}</option>
+                      ))}
+                    </select>
+                    <input placeholder="Nombre" value={adminReservation.name} onChange={(e) => setAdminReservation({ ...adminReservation, name: e.target.value })} />
+                    <input placeholder="Email" value={adminReservation.email} onChange={(e) => setAdminReservation({ ...adminReservation, email: e.target.value })} />
+                    <input placeholder="Lugares" type="number" value={adminReservation.seats} onChange={(e) => setAdminReservation({ ...adminReservation, seats: e.target.value })} />
+                    <input placeholder="Fecha" type="date" value={adminReservation.reservation_date} onChange={(e) => setAdminReservation({ ...adminReservation, reservation_date: e.target.value })} />
+                    <select value={adminReservation.status} onChange={(e) => setAdminReservation({ ...adminReservation, status: e.target.value })}>
+                      <option value="paid">Pagado</option>
+                      <option value="pending_payment">Pendiente</option>
+                    </select>
+                    <button
+                      onClick={async () => {
+                        await fetchJSON(`${API}/reservations/admin`, {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({
+                            ...adminReservation,
+                            seats: Number(adminReservation.seats)
+                          })
+                        });
+                        setAdminReservation({ workshop_id: "", session_id: "", name: "", email: "", seats: "", reservation_date: "", status: "paid" });
+                        await loadAll();
+                      }}
+                    >
+                      Agregar manual
+                    </button>
+                  </div>
                   <div className="admin-list">
                     {reservations.map((r) => (
                       <div key={r.id} className="admin-item">
                         <div>
                           <strong>{r.workshop_title}</strong>
-                          <small>{r.name} · {r.seats} lugares · {r.reservation_date}</small>
+                          <small>{r.name} · {r.seats} lugares · {(r.session_date || r.reservation_date)}</small>
                         </div>
-                        <div className="status">{r.status}</div>
+                        <div>
+                          <span className="status">{r.status}</span>
+                          {r.status !== "paid" && (
+                            <button
+                              onClick={async () => {
+                                await fetchJSON(`${API}/reservations/${r.id}`, {
+                                  method: "PUT",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({ status: "paid" })
+                                });
+                                await loadAll();
+                              }}
+                            >
+                              Marcar pagado
+                            </button>
+                          )}
+                          <button
+                            className="danger"
+                            onClick={async () => {
+                              await fetchJSON(`${API}/reservations/${r.id}`, { method: "DELETE" });
+                              await loadAll();
+                            }}
+                          >
+                            Cancelar
+                          </button>
+                        </div>
                       </div>
                     ))}
                     {reservations.length === 0 && <div className="empty">Sin reservas aún.</div>}
@@ -949,6 +1196,14 @@ const App = () => {
                   <div>
                     <label className="check">
                       <span>Banner principal</span>
+                    </label>
+                    <label className="check">
+                      <input
+                        type="checkbox"
+                        checked={hero.showBanner}
+                        onChange={(e) => setHero({ ...hero, showBanner: e.target.checked })}
+                      />
+                      Mostrar banner
                     </label>
                     <SingleImageUploader value={hero.image} onChange={(image) => setHero({ ...hero, image })} />
                     <div className="form-grid">
@@ -968,6 +1223,12 @@ const App = () => {
                   </div>
                   <input placeholder="Título Quiénes" value={about.title} onChange={(e) => setAbout({ ...about, title: e.target.value })} />
                   <textarea placeholder="Texto Quiénes" value={about.text} onChange={(e) => setAbout({ ...about, text: e.target.value })} />
+                  <div>
+                    <label className="check">
+                      <span>Fotos Quiénes</span>
+                    </label>
+                    <ImageUploader value={about.images || []} onChange={(images) => setAbout({ ...about, images })} />
+                  </div>
                   <button className="primary" onClick={saveSettings}>Guardar textos</button>
                 </div>
 
@@ -1062,28 +1323,6 @@ const App = () => {
                         <input type="range" min="50" max="160" value={parseInt(theme.bgScale, 10)} onChange={(e) => setTheme({ ...theme, bgScale: `${e.target.value}%` })} />
                       </label>
                     </div>
-                  </div>
-                  <div className="form-grid">
-                    <label className="check">
-                      <input type="checkbox" checked={theme.showFrame} onChange={(e) => setTheme({ ...theme, showFrame: e.target.checked })} />
-                      Marco
-                    </label>
-                    <label className="check">
-                      <input type="checkbox" checked={theme.showAngels} onChange={(e) => setTheme({ ...theme, showAngels: e.target.checked })} />
-                      Ángeles
-                    </label>
-                    <label className="check">
-                      <input type="checkbox" checked={theme.showHearts} onChange={(e) => setTheme({ ...theme, showHearts: e.target.checked })} />
-                      Corazones
-                    </label>
-                    <label>
-                      Intensidad corazones
-                      <input type="range" min="0.1" max="0.8" step="0.05" value={theme.heartsOpacity} onChange={(e) => setTheme({ ...theme, heartsOpacity: e.target.value })} />
-                    </label>
-                    <label>
-                      Cantidad corazones
-                      <input type="range" min="3" max="10" value={theme.heartsCount} onChange={(e) => setTheme({ ...theme, heartsCount: Number(e.target.value) })} />
-                    </label>
                   </div>
                   <button className="primary" onClick={saveTheme}>Guardar diseño</button>
                 </div>
