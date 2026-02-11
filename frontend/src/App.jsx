@@ -588,27 +588,43 @@ const App = () => {
   }, [theme]);
 
   const saveWorkshop = async () => {
-    const payload = { ...workshopForm };
-    if (isSupabase) {
-      if (payload.id) {
-        await sbUpdate("workshops", payload, { id: payload.id });
+    const payload = {
+      ...workshopForm,
+      price: Number(workshopForm.price),
+      featured: Boolean(workshopForm.featured),
+      images: workshopForm.images || [],
+      category_id: workshopForm.category_id || null
+    };
+    try {
+      if (isSupabase) {
+        if (payload.id) {
+          await sbUpdate("workshops", { ...payload, updated_at: new Date().toISOString() }, { id: payload.id });
+        } else {
+          await sbInsert("workshops", [{
+            ...payload,
+            id: crypto.randomUUID(),
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          }]);
+        }
       } else {
-        await sbInsert("workshops", [{ ...payload, id: crypto.randomUUID(), created_at: new Date().toISOString(), updated_at: new Date().toISOString() }]);
+        if (payload.id) {
+          await fetchJSON(`${API}/workshops/${payload.id}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+          });
+        } else {
+          await fetchJSON(`${API}/workshops`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+          });
+        }
       }
-    } else {
-      if (payload.id) {
-        await fetchJSON(`${API}/workshops/${payload.id}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload)
-        });
-      } else {
-        await fetchJSON(`${API}/workshops`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload)
-        });
-      }
+    } catch (err) {
+      alert(err?.message || "No se pudo guardar el taller.");
+      return;
     }
     setWorkshopForm({
       id: "",
