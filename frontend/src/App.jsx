@@ -670,27 +670,42 @@ const App = () => {
   };
 
   const saveSettings = async () => {
-    await fetchJSON(`${API}/settings/hero`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ value: JSON.stringify(hero) })
-    });
-    await fetchJSON(`${API}/settings/about`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ value: JSON.stringify(about) })
-    });
+    if (isSupabase) {
+      await sbInsert("settings", [{ key: "hero", value: JSON.stringify(hero) }]).catch(async () => {
+        await sbUpdate("settings", { value: JSON.stringify(hero) }, { key: "hero" });
+      });
+      await sbInsert("settings", [{ key: "about", value: JSON.stringify(about) }]).catch(async () => {
+        await sbUpdate("settings", { value: JSON.stringify(about) }, { key: "about" });
+      });
+    } else {
+      await fetchJSON(`${API}/settings/hero`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ value: JSON.stringify(hero) })
+      });
+      await fetchJSON(`${API}/settings/about`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ value: JSON.stringify(about) })
+      });
+    }
     setCache("ao_hero", hero);
     setCache("ao_about", about);
     alert("Textos actualizados");
   };
 
   const saveTheme = async () => {
-    await fetchJSON(`${API}/settings/theme`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ value: JSON.stringify(theme) })
-    });
+    if (isSupabase) {
+      await sbInsert("settings", [{ key: "theme", value: JSON.stringify(theme) }]).catch(async () => {
+        await sbUpdate("settings", { value: JSON.stringify(theme) }, { key: "theme" });
+      });
+    } else {
+      await fetchJSON(`${API}/settings/theme`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ value: JSON.stringify(theme) })
+      });
+    }
     setCache("ao_theme", theme);
     alert("Diseño actualizado");
   };
@@ -700,11 +715,17 @@ const App = () => {
       alert("Escribe un PIN");
       return;
     }
-    await fetchJSON(`${API}/settings/admin_pin`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ value: adminPinNew })
-    });
+    if (isSupabase) {
+      await sbInsert("settings", [{ key: "admin_pin", value: adminPinNew }]).catch(async () => {
+        await sbUpdate("settings", { value: adminPinNew }, { key: "admin_pin" });
+      });
+    } else {
+      await fetchJSON(`${API}/settings/admin_pin`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ value: adminPinNew })
+      });
+    }
     setAdminPinStored(adminPinNew);
     setAdminPin("");
     setCache("ao_pin", adminPinNew);
@@ -712,11 +733,17 @@ const App = () => {
   };
 
   const saveContact = async () => {
-    await fetchJSON(`${API}/settings/contact`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ value: JSON.stringify(contact) })
-    });
+    if (isSupabase) {
+      await sbInsert("settings", [{ key: "contact", value: JSON.stringify(contact) }]).catch(async () => {
+        await sbUpdate("settings", { value: JSON.stringify(contact) }, { key: "contact" });
+      });
+    } else {
+      await fetchJSON(`${API}/settings/contact`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ value: JSON.stringify(contact) })
+      });
+    }
     setCache("ao_contact", contact);
     alert("Contacto actualizado");
   };
@@ -1149,7 +1176,14 @@ const App = () => {
                         </div>
                         <div>
                           <button onClick={() => { setWorkshopForm({ ...w, images: w.images || [] }); setSessionForm({ ...sessionForm, workshop_id: w.id }); }}>Editar</button>
-                          <button className="danger" onClick={async () => { await fetchJSON(`${API}/workshops/${w.id}`, { method: "DELETE" }); await loadAll(); }}>Eliminar</button>
+                          <button className="danger" onClick={async () => { 
+                            if (isSupabase) {
+                              await sbDelete("workshops", { id: w.id });
+                            } else {
+                              await fetchJSON(`${API}/workshops/${w.id}`, { method: "DELETE" });
+                            }
+                            await loadAll();
+                          }}>Eliminar</button>
                         </div>
                       </div>
                     ))}
@@ -1175,17 +1209,29 @@ const App = () => {
                             return;
                           }
                           try {
-                            await fetchJSON(`${API}/sessions`, {
-                              method: "POST",
-                              headers: { "Content-Type": "application/json" },
-                              body: JSON.stringify({
+                            if (isSupabase) {
+                              await sbInsert("sessions", [{
+                                id: crypto.randomUUID(),
                                 workshop_id: sessionForm.workshop_id,
                                 date: sessionForm.date,
-                                time: sessionForm.time,
-                                location: sessionForm.location,
-                                seats: Number(sessionForm.seats)
-                              })
-                            });
+                                time: sessionForm.time || "10:00",
+                                location: sessionForm.location || "",
+                                seats: Number(sessionForm.seats),
+                                created_at: new Date().toISOString()
+                              }]);
+                            } else {
+                              await fetchJSON(`${API}/sessions`, {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({
+                                  workshop_id: sessionForm.workshop_id,
+                                  date: sessionForm.date,
+                                  time: sessionForm.time,
+                                  location: sessionForm.location,
+                                  seats: Number(sessionForm.seats)
+                                })
+                              });
+                            }
                             setSessionForm({ workshop_id: sessionForm.workshop_id, date: "", time: "", location: "", seats: "" });
                             await loadAll();
                           } catch (err) {
@@ -1203,7 +1249,14 @@ const App = () => {
                             <strong>{s.date} · {s.time || "10:00"}</strong>
                             <small>{s.location || "Sin ubicación"} · {s.seats} cupos</small>
                           </div>
-                          <button className="danger" onClick={async () => { await fetchJSON(`${API}/sessions/${s.id}`, { method: "DELETE" }); await loadAll(); }}>Eliminar</button>
+                          <button className="danger" onClick={async () => { 
+                            if (isSupabase) {
+                              await sbDelete("sessions", { id: s.id });
+                            } else {
+                              await fetchJSON(`${API}/sessions/${s.id}`, { method: "DELETE" });
+                            }
+                            await loadAll();
+                          }}>Eliminar</button>
                         </div>
                       ))}
                     </div>
@@ -1331,27 +1384,35 @@ const App = () => {
                           {r.status !== "paid" && (
                             <button
                               onClick={async () => {
-                                await fetchJSON(`${API}/reservations/${r.id}`, {
-                                  method: "PUT",
-                                  headers: { "Content-Type": "application/json" },
-                                  body: JSON.stringify({ status: "paid" })
-                                });
-                                await loadAll();
-                              }}
-                            >
-                              Marcar pagado
-                            </button>
-                          )}
-                          <button
-                            className="danger"
-                            onClick={async () => {
-                              await fetchJSON(`${API}/reservations/${r.id}`, { method: "DELETE" });
-                              await loadAll();
-                            }}
-                          >
-                            Cancelar
-                          </button>
-                        </div>
+                          if (isSupabase) {
+                            await sbUpdate("reservations", { status: "paid" }, { id: r.id });
+                          } else {
+                            await fetchJSON(`${API}/reservations/${r.id}`, {
+                              method: "PUT",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ status: "paid" })
+                            });
+                          }
+                          await loadAll();
+                        }}
+                      >
+                        Marcar pagado
+                      </button>
+                    )}
+                    <button
+                      className="danger"
+                      onClick={async () => {
+                        if (isSupabase) {
+                          await sbDelete("reservations", { id: r.id });
+                        } else {
+                          await fetchJSON(`${API}/reservations/${r.id}`, { method: "DELETE" });
+                        }
+                        await loadAll();
+                      }}
+                    >
+                      Cancelar
+                    </button>
+                  </div>
                       </div>
                     ))}
                     {reservations.length === 0 && <div className="empty">Sin reservas aún.</div>}
