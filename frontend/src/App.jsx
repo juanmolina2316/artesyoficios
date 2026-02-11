@@ -1,8 +1,15 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { createClient } from "@supabase/supabase-js";
 
 const HOST = window.location.hostname || "localhost";
 const API = `${window.location.protocol}//${HOST}:4000/api`;
 const IMG_BASE = `${window.location.protocol}//${HOST}:4000`;
+
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "";
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
+const SUPABASE_BUCKET = import.meta.env.VITE_SUPABASE_BUCKET || "media";
+const supabase = SUPABASE_URL && SUPABASE_ANON_KEY ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+const isSupabase = Boolean(supabase);
 
 const currency = new Intl.NumberFormat("es-MX", {
   style: "currency",
@@ -76,6 +83,54 @@ const fetchJSON = async (url, options) => {
   return res.json();
 };
 
+const sbInsert = async (table, payload) => {
+  const { data, error } = await supabase.from(table).insert(payload).select();
+  if (error) throw error;
+  return data;
+};
+
+const sbUpdate = async (table, payload, match) => {
+  const { data, error } = await supabase.from(table).update(payload).match(match).select();
+  if (error) throw error;
+  return data;
+};
+
+const sbDelete = async (table, match) => {
+  const { error } = await supabase.from(table).delete().match(match);
+  if (error) throw error;
+};
+
+const sbSelect = async (table, opts = {}) => {
+  let q = supabase.from(table).select("*");
+  if (opts.orderBy) q = q.order(opts.orderBy, { ascending: opts.asc ?? true });
+  if (opts.eq) {
+    Object.entries(opts.eq).forEach(([k, v]) => { q = q.eq(k, v); });
+  }
+  const { data, error } = await q;
+  if (error) throw error;
+  return data || [];
+};
+
+const uploadToSupabase = async (file) => {
+  if (!supabase) throw new Error("Supabase no configurado");
+  const ext = file.name.split(".").pop();
+  const path = `uploads/${crypto.randomUUID()}.${ext}`;
+  const { error } = await supabase.storage.from(SUPABASE_BUCKET).upload(path, file, { cacheControl: "3600", upsert: false });
+  if (error) throw error;
+  const { data } = supabase.storage.from(SUPABASE_BUCKET).getPublicUrl(path);
+  return data.publicUrl;
+};
+
+const uploadFile = async (file) => {
+  if (isSupabase) {
+    return uploadToSupabase(file);
+  }
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetchJSON(`${API}/upload`, { method: "POST", body: form });
+  return res.url;
+};
+
 const resolveUrl = (value) => {
   if (!value) return "";
   if (value.startsWith("http://") || value.startsWith("https://")) return value;
@@ -147,10 +202,8 @@ const ImageUploader = ({ value = [], onChange }) => {
     const newUrls = [];
     try {
       for (const file of files) {
-        const form = new FormData();
-        form.append("file", file);
-        const res = await fetchJSON(`${API}/upload`, { method: "POST", body: form });
-        newUrls.push(res.url);
+        const resUrl = await uploadFile(file);
+        newUrls.push(resUrl);
       }
       onChange([...(value || []), ...newUrls]);
     } catch {
@@ -192,10 +245,8 @@ const SingleImageUploader = ({ value, onChange }) => {
     if (!file) return;
     setUploading(true);
     try {
-      const form = new FormData();
-      form.append("file", file);
-      const res = await fetchJSON(`${API}/upload`, { method: "POST", body: form });
-      onChange(res.url);
+      const resUrl = await uploadFile(file);
+      onChange(resUrl);
     } catch {
       alert("No se pudo subir la imagen. Verifica que el backend esté activo.");
     } finally {
@@ -232,10 +283,8 @@ const LogoUploader = ({ value, onChange }) => {
     if (!file) return;
     setUploading(true);
     try {
-      const form = new FormData();
-      form.append("file", file);
-      const res = await fetchJSON(`${API}/upload`, { method: "POST", body: form });
-      onChange(res.url);
+      const resUrl = await uploadFile(file);
+      onChange(resUrl);
     } catch {
       alert("No se pudo subir la imagen. Verifica que el backend esté activo.");
     } finally {
@@ -351,6 +400,42 @@ const App = () => {
   );
 
   const loadAll = async () => {
+    if (isSupabase) {
+      const [w, c, b, r, s] = await Promise.all([
+        sbSelect("workshops", { orderBy: "created_at", asc: false }),
+        sbSelect("categories", { orderBy: "created_at", asc: false }),
+        sbSelect("brands", { orderBy: "created_at", asc: false }),
+        sbSelect("reservations", { orderBy: "created_at", asc: false }),
+        sbSelect("sessions", { orderBy: "date", asc: true })
+      ]);
+      const sessionsByWorkshop = s.reduce((acc, sess) => {
+        (acc[sess.workshop_id] ||= []).push(sess);
+        return acc;
+      }, {});
+      const sessionsById = s.reduce((acc, sess) => {
+        acc[sess.id] = sess;
+        return acc;
+      }, {});
+      const workshopsWithSessions = w.map((item) => ({
+        ...item,
+        images: item.images || [],
+        featured: Boolean(item.featured),
+        sessions: sessionsByWorkshop[item.id] || []
+      }));
+      const workshopsById = workshopsWithSessions.reduce((acc, item) => {
+        acc[item.id] = item;
+        return acc;
+      }, {});
+      setWorkshops(workshopsWithSessions);
+      setCategories(c);
+      setBrands(b);
+      setReservations(r.map((resv) => ({
+        ...resv,
+        workshop_title: workshopsById[resv.workshop_id]?.title || "",
+        session_date: sessionsById[resv.session_id]?.date || ""
+      })));
+      return;
+    }
     const [w, c, b, r] = await Promise.all([
       fetchJSON(`${API}/workshops`),
       fetchJSON(`${API}/categories`),
@@ -368,6 +453,48 @@ const App = () => {
 
   const loadSettings = async () => {
     try {
+      if (isSupabase) {
+        const rows = await sbSelect("settings");
+        const getVal = (key) => rows.find((r) => r.key === key)?.value || "";
+        const heroVal = getVal("hero");
+        const aboutVal = getVal("about");
+        const pinVal = getVal("admin_pin");
+        const themeVal = getVal("theme");
+        const contactVal = getVal("contact");
+
+        if (heroVal) {
+          const v = JSON.parse(heroVal);
+          setHero(v);
+          setCache("ao_hero", v);
+        }
+        if (aboutVal) {
+          const v = JSON.parse(aboutVal);
+          setAbout(v);
+          setCache("ao_about", v);
+        }
+        if (themeVal) {
+          const v = { ...defaultTheme, ...JSON.parse(themeVal) };
+          setTheme(v);
+          setCache("ao_theme", v);
+        }
+        if (contactVal) {
+          const v = { ...defaultContact, ...JSON.parse(contactVal) };
+          setContact(v);
+          setCache("ao_contact", v);
+        }
+        if (pinVal) {
+          setAdminPinStored(pinVal);
+          setAdminPinNew(pinVal);
+          setCache("ao_pin", pinVal);
+        } else if (!adminPinStored) {
+          setAdminPinStored(defaultPin);
+          setAdminPinNew(defaultPin);
+          setCache("ao_pin", defaultPin);
+          await sbInsert("settings", [{ key: "admin_pin", value: defaultPin }]).catch(() => null);
+        }
+        return;
+      }
+
       const heroRes = await fetchJSON(`${API}/settings/hero`).catch(() => ({ value: "" }));
       const aboutRes = await fetchJSON(`${API}/settings/about`).catch(() => ({ value: "" }));
       const pinRes = await fetchJSON(`${API}/settings/admin_pin`).catch(() => ({ value: "" }));
@@ -462,18 +589,26 @@ const App = () => {
 
   const saveWorkshop = async () => {
     const payload = { ...workshopForm };
-    if (payload.id) {
-      await fetchJSON(`${API}/workshops/${payload.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
+    if (isSupabase) {
+      if (payload.id) {
+        await sbUpdate("workshops", payload, { id: payload.id });
+      } else {
+        await sbInsert("workshops", [{ ...payload, id: crypto.randomUUID(), created_at: new Date().toISOString(), updated_at: new Date().toISOString() }]);
+      }
     } else {
-      await fetchJSON(`${API}/workshops`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
+      if (payload.id) {
+        await fetchJSON(`${API}/workshops/${payload.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+      } else {
+        await fetchJSON(`${API}/workshops`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+      }
     }
     setWorkshopForm({
       id: "",
@@ -496,19 +631,26 @@ const App = () => {
       alert("Selecciona una fecha disponible.");
       return;
     }
-    await fetchJSON(`${API}/reservations`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        workshop_id: form.get("workshop"),
-        session_id: selectedSession,
-        name: form.get("name"),
-        email: form.get("email"),
-        seats: Number(form.get("seats")),
-        reservation_date: bookingDate,
-        status: "pending_payment"
-      })
-    });
+    const reservationPayload = {
+      id: crypto.randomUUID(),
+      workshop_id: form.get("workshop"),
+      session_id: selectedSession,
+      name: form.get("name"),
+      email: form.get("email"),
+      seats: Number(form.get("seats")),
+      reservation_date: bookingDate,
+      status: "pending_payment",
+      created_at: new Date().toISOString()
+    };
+    if (isSupabase) {
+      await sbInsert("reservations", [reservationPayload]);
+    } else {
+      await fetchJSON(`${API}/reservations`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(reservationPayload)
+      });
+    }
     e.currentTarget.reset();
     await loadAll();
     alert("Solicitud registrada. La reserva se confirma solo después del pago.");
@@ -1072,13 +1214,28 @@ const App = () => {
                   <h4>Categorías</h4>
                   <div className="inline-form">
                     <input placeholder="Nueva categoría" value={newCategory} onChange={(e) => setNewCategory(e.target.value)} />
-                    <button onClick={async () => { await fetchJSON(`${API}/categories`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: newCategory }) }); setNewCategory(""); await loadAll(); }}>Agregar</button>
+                    <button onClick={async () => { 
+                      if (isSupabase) {
+                        await sbInsert("categories", [{ id: crypto.randomUUID(), name: newCategory, created_at: new Date().toISOString() }]);
+                      } else {
+                        await fetchJSON(`${API}/categories`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: newCategory }) });
+                      }
+                      setNewCategory("");
+                      await loadAll();
+                    }}>Agregar</button>
                   </div>
                   <div className="chip-row">
                     {categories.map((c) => (
                       <div className="chip" key={c.id}>
                         <span>{c.name}</span>
-                        <button onClick={async () => { await fetchJSON(`${API}/categories/${c.id}`, { method: "DELETE" }); await loadAll(); }}>x</button>
+                        <button onClick={async () => { 
+                          if (isSupabase) {
+                            await sbDelete("categories", { id: c.id });
+                          } else {
+                            await fetchJSON(`${API}/categories/${c.id}`, { method: "DELETE" });
+                          }
+                          await loadAll();
+                        }}>x</button>
                       </div>
                     ))}
                   </div>
@@ -1088,7 +1245,15 @@ const App = () => {
                   <h4>Marcas</h4>
                   <div className="inline-form">
                     <input placeholder="Nombre" value={newBrand.name} onChange={(e) => setNewBrand({ ...newBrand, name: e.target.value })} />
-                    <button onClick={async () => { await fetchJSON(`${API}/brands`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(newBrand) }); setNewBrand({ name: "", logo_url: "" }); await loadAll(); }}>Agregar</button>
+                    <button onClick={async () => { 
+                      if (isSupabase) {
+                        await sbInsert("brands", [{ id: crypto.randomUUID(), name: newBrand.name, logo_url: newBrand.logo_url, created_at: new Date().toISOString() }]);
+                      } else {
+                        await fetchJSON(`${API}/brands`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(newBrand) });
+                      }
+                      setNewBrand({ name: "", logo_url: "" });
+                      await loadAll();
+                    }}>Agregar</button>
                   </div>
                   <LogoUploader value={newBrand.logo_url} onChange={(logo_url) => setNewBrand({ ...newBrand, logo_url })} />
                   <div className="admin-list">
@@ -1100,7 +1265,14 @@ const App = () => {
                         </div>
                         <div>
                           <button onClick={() => setNewBrand({ name: b.name, logo_url: b.logo_url })}>Editar</button>
-                          <button className="danger" onClick={async () => { await fetchJSON(`${API}/brands/${b.id}`, { method: "DELETE" }); await loadAll(); }}>Eliminar</button>
+                          <button className="danger" onClick={async () => { 
+                            if (isSupabase) {
+                              await sbDelete("brands", { id: b.id });
+                            } else {
+                              await fetchJSON(`${API}/brands/${b.id}`, { method: "DELETE" });
+                            }
+                            await loadAll();
+                          }}>Eliminar</button>
                         </div>
                       </div>
                     ))}
