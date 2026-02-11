@@ -365,6 +365,7 @@ const App = () => {
     map_embed: "",
     featured: false
   });
+  const [workshopFormKey, setWorkshopFormKey] = useState(0);
   const [sessionForm, setSessionForm] = useState({
     workshop_id: "",
     date: "",
@@ -645,6 +646,7 @@ const App = () => {
       map_embed: "",
       featured: false
     });
+    setWorkshopFormKey((k) => k + 1);
     await loadAll();
   };
 
@@ -1169,7 +1171,7 @@ const App = () => {
             ) : (
               <div className="admin-body">
                 <h3>Administración</h3>
-                <div className="admin-section">
+                <div className="admin-section" key={workshopFormKey}>
                   <h4>Crear/Editar Taller</h4>
                   <div className="form-grid">
                     <input placeholder="Título" value={workshopForm.title} onChange={(e) => setWorkshopForm({ ...workshopForm, title: e.target.value })} />
