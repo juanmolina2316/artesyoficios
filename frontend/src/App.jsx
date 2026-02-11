@@ -588,6 +588,14 @@ const App = () => {
   }, [theme]);
 
   const saveWorkshop = async () => {
+    if (!workshopForm.title || !workshopForm.description || !workshopForm.price || !workshopForm.location) {
+      alert("Completa título, descripción, precio y ubicación.");
+      return;
+    }
+    if (isSupabase && (!SUPABASE_URL || !SUPABASE_ANON_KEY)) {
+      alert("Supabase no está configurado en este entorno.");
+      return;
+    }
     const payload = {
       ...workshopForm,
       price: Number(workshopForm.price),
@@ -1181,7 +1189,7 @@ const App = () => {
                     Destacado
                   </label>
                   <ImageUploader value={workshopForm.images} onChange={(images) => setWorkshopForm({ ...workshopForm, images })} />
-                  <button className="primary" onClick={saveWorkshop}>Guardar taller</button>
+                  <button type="button" className="primary" onClick={saveWorkshop}>Guardar taller</button>
 
                   <div className="admin-list">
                     {workshops.map((w) => (
